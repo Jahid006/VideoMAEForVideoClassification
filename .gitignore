@@ -2,3 +2,9 @@ VideoMAE
 videomae-base-finetuned-charades
 charades_HF
 __pycache__
+video_classification_charade_with_hf.py
+video_classification_charade_with_hf.ipynb
+pytorchvideo_data.py
+delete_pretranining_videomae_ucf101.ipynb
+debug_dataloader_hf.ipynb
+artifact*

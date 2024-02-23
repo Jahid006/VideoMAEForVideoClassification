@@ -36,6 +36,7 @@ class VideoClsDataset(Dataset):
         num_crop=1,
         test_num_segment=10,
         test_num_crop=3,
+        single_label_classification=False,
         args=None,
     ):
         self.n_class = n_class
@@ -57,6 +58,7 @@ class VideoClsDataset(Dataset):
         self.args = args
         self.aug = False
         self.rand_erase = False
+        self.single_label_classification = single_label_classification
         if self.mode in ["train"]:
             self.aug = True
             if self.args.reprob > 0:
@@ -143,11 +145,13 @@ class VideoClsDataset(Dataset):
                 return frame_list, label_list, index_list, {}
             else:
                 buffer = self._aug_frame(buffer, args)
+            if self.single_label_classification:
+                labels = torch.tensor(self.label_array[index]).long()
+            else:
+                labels = torch.zeros(len(self.id2label), dtype=torch.float32,)
+                labels[self.label_array[index]] = 1.0
 
-            labels = torch.zeros(len(self.id2label), dtype=torch.float32,)
-            labels[self.label_array[index]] = 1.0
-
-            return {'video': buffer, 'labels': labels}
+            return {'video': buffer, 'label': labels}
 
         elif self.mode == "validation":
             sample = self.dataset_samples[index]
@@ -162,10 +166,13 @@ class VideoClsDataset(Dataset):
                     buffer = self.loadvideo_decord(sample)
             buffer = self.data_transform(buffer)
 
-            labels = torch.zeros(len(self.id2label), dtype=torch.float32,)
-            labels[self.label_array[index]] = 1.0
+            if self.single_label_classification:
+                labels = torch.tensor(self.label_array[index]).long()
+            else:
+                labels = torch.zeros(len(self.id2label), dtype=torch.float32,)
+                labels[self.label_array[index]] = 1.0
 
-            return {'video': buffer, 'labels': labels}
+            return {'video': buffer, 'label': labels}
             
         elif self.mode == "test":
             sample = self.test_dataset[index]
@@ -321,6 +328,7 @@ class VideoClsDataset(Dataset):
             return buffer
 
         # handle temporal segments
+        '''
         converted_len = int(self.clip_len * self.frame_sample_rate)
         seg_len = len(vr) // self.num_segment
 
@@ -343,6 +351,8 @@ class VideoClsDataset(Dataset):
                 index = np.clip(index, str_idx, end_idx - 1).astype(np.int64)
             index = index + i * seg_len
             all_index.extend(list(index))
+        '''
+        all_index = extract_segments(vr, self.clip_len, self.frame_sample_rate)
 
         all_index = all_index[:: int(sample_rate_scale)]
         vr.seek(0)
@@ -354,6 +364,35 @@ class VideoClsDataset(Dataset):
             return len(self.dataset_samples)
         else:
             return len(self.test_dataset)
+
+
+def extract_segments(video_reader, num_segments, frames_per_segment):
+    """Extracts segments from a video, taking 'frames_per_segment' frames from each segment."""
+
+    # Get total number of frames in the video
+    total_frames = len(video_reader)
+
+    # Calculate frames per segment
+    frames_per_segment = min(frames_per_segment, total_frames // num_segments)
+
+    # Calculate step size for segment extraction
+    step = total_frames // num_segments
+
+    segments = []
+    for i in range(num_segments):
+        start_frame = i * step
+        end_frame = min(start_frame + frames_per_segment, total_frames)
+
+        frames = []
+        for frame_idx in range(start_frame, end_frame):
+            frames.append(frame_idx)
+        while len(frames) < frames_per_segment:
+            frames.append(frames[-1])
+
+        segments.extend(frames)
+
+    return segments
+
 
 
 def spatial_sampling(

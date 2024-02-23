@@ -98,10 +98,6 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
 
     @property
     def num_videos(self):
-        """
-        Returns:
-            Number of videos in dataset.
-        """
         return len(self.video_sampler)
 
     def __next__(self) -> dict:
@@ -125,6 +121,7 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
         if not self._video_sampler_iter:
             # Setup MultiProcessSampler here - after PyTorch DataLoader workers are spawned.
             self._video_sampler_iter = iter(MultiProcessSampler(self._video_sampler))
+            # self._video_sampler_iter = iter(self._video_sampler)
 
         for i_try in range(self._MAX_CONSECUTIVE_FAILURES):
             # Reuse previously stored video if there are still clips to be sampled from
@@ -143,25 +140,15 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
                     )
                     # self._loaded_video_label = (video, info_dict, video_index)
                 except Exception as e:
-                    logger.debug(
-                        "Failed to load video with error: {}; trial {}".format(
-                            e,
-                            i_try,
-                        )
-                    )
+                    logger.debug("Failed to load video with error: {}; trial {}".format(e, i_try))
                     logger.exception("Video load exception")
                     continue
 
-            (
-                clip_start,
-                clip_end,
-                clip_index,
-                aug_index,
-                is_last_clip,
-            ) = self._clip_sampler(self._last_clip_end_time, video.duration, info_dict)
+            (clip_start, clip_end, clip_index, aug_index, is_last_clip) = self._clip_sampler(
+                self._last_clip_end_time, video.duration, info_dict
+            )
 
             if isinstance(clip_start, list):  # multi-clip in each sample
-
                 # Only load the clips once and reuse previously stored clips if there are multiple
                 # views for augmentations to perform on the same clips.
                 if aug_index[0] == 0:
@@ -179,7 +166,6 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
                             self._loaded_clip[key] = [x[key] for x in loaded_clip_list]
 
             else:  # single clip case
-
                 # Only load the clip once and reuse previously stored clip if there are multiple
                 # views for augmentations to perform on the same clip.
                 if aug_index == 0:
@@ -187,31 +173,26 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
 
             self._last_clip_end_time = clip_end
 
-            '''video_is_null = (
-                self._loaded_clip is None or self._loaded_clip["video"] is None
-            )
-            if (
-                is_last_clip[-1] if isinstance(is_last_clip, list) else is_last_clip
-            ) or video_is_null:
-                # Close the loaded encoded video and reset the last sampled clip time ready
-                # to sample a new video on the next iteration.
-                self._loaded_video_label[0].close()
-                self._loaded_video_label = None
-                self._last_clip_end_time = None
-                self._clip_sampler.reset()
+            video_is_null = self._loaded_clip is None or self._loaded_clip["video"] is None
 
-                # Force garbage collection to release video container immediately
-                # otherwise memory can spike.
-                gc.collect()
+            # if (is_last_clip[-1] if isinstance(is_last_clip, list) else is_last_clip) or video_is_null:
 
-                if video_is_null:
-                    logger.debug(
-                        "Failed to load clip {}; trial {}".format(video.name, i_try)
-                    )
-                    continue
-'''
+            #     # Close the loaded encoded video and reset the last sampled clip time ready
+            #     # to sample a new video on the next iteration.
+            self._loaded_video_label[0].close()
+            self._loaded_video_label = None
+            self._last_clip_end_time = None
+            self._clip_sampler.reset()
+
+            # Force garbage collection to release video container immediately
+            # otherwise memory can spike.
+            gc.collect()
+
+            if video_is_null:
+                logger.debug("Failed to load clip {}; trial {}".format(video.name, i_try))
+                continue
+
             frames = self._loaded_clip["video"]
-            audio_samples = self._loaded_clip["audio"]
             sample_dict = {
                 "video": frames,
                 "video_name": video.name,
@@ -219,21 +200,17 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
                 "clip_index": clip_index,
                 "aug_index": aug_index,
                 **info_dict,
-                **({"audio": audio_samples} if audio_samples is not None else {}),
             }
 
             if self._transform is not None:
                 sample_dict = self._transform(sample_dict)
 
-                # User can force dataset to continue by returning None in transform.
                 if sample_dict is None:
                     continue
-            gc.collect()
+
             return sample_dict
         else:
-            raise RuntimeError(
-                f"Failed to load video after {self._MAX_CONSECUTIVE_FAILURES} retries."
-            )
+            raise RuntimeError(f"Failed to load video after {self._MAX_CONSECUTIVE_FAILURES} retries.")
 
     def __iter__(self):
         self._video_sampler_iter = None  # Reset video sampler
