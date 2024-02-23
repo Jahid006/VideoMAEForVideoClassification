@@ -8,4 +8,5 @@ pytorchvideo_data.py
 delete_pretranining_videomae_ucf101.ipynb
 debug_dataloader_hf.ipynb
 artifact*
-pytorchvideo_data.py
+pytorchvideo_dataset.py
+dataset_configs.py
