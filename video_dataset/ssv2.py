@@ -13,12 +13,11 @@ import volume_transforms as volume_transforms
 class SSVideoClsDataset(Dataset):
     """Load your own video classification dataset."""
 
-    def __init__(self, anno_path, data_path, mode='train', clip_len=8,
+    def __init__(self, dataset_samples, label_array, mode='train', clip_len=8,
                 crop_size=224, short_side_size=256, new_height=256,
                 new_width=340, keep_aspect_ratio=True, num_segment=1,
                 num_crop=1, test_num_segment=10, test_num_crop=3, args=None):
-        self.anno_path = anno_path
-        self.data_path = data_path
+
         self.mode = mode
         self.clip_len = clip_len
         self.crop_size = crop_size
@@ -40,10 +39,8 @@ class SSVideoClsDataset(Dataset):
         if VideoReader is None:
             raise ImportError("Unable to import `decord` which is required to read videos.")
 
-        import pandas as pd
-        cleaned = pd.read_csv(self.anno_path, header=None, delimiter=' ')
-        self.dataset_samples = list(cleaned.values[:, 0])
-        self.label_array = list(cleaned.values[:, 1])
+        self.dataset_samples = dataset_samples
+        self.label_array = label_array
 
         if (mode == 'train'):
             pass
